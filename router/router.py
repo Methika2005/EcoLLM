@@ -10,7 +10,7 @@ from dataclasses import dataclass
 # Model names exactly as pulled via `ollama pull`
 GENERAL = "qwen2.5:7b"
 CODER = "qwen2.5-coder:7b"
-VISION = "llava:7b"  # only if C confirms it is pulled
+VISION = "qwen2.5vl:3b"  # only if C confirms it is pulled
 
 CODE_WORDS = {
     "code", "script", "python", "function", "bug", "debug", "error",

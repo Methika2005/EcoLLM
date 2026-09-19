@@ -24,7 +24,7 @@ def run_python(code: str) -> str:
         proc = subprocess.run(
             ["docker", "run", "--rm", "--network", "none",
              "--memory", "512m", "--cpus", "1",
-             "-i", "sandbox:latest", "python", "-c", code],
+             "-i", "python:3.11-slim", "python", "-c", code],
             capture_output=True, text=True, timeout=30,
         )
         out = (proc.stdout + proc.stderr).strip()
@@ -37,8 +37,35 @@ def run_python(code: str) -> str:
 
 # ---------------------------------------------------------------- C's tools
 def read_document(path: str) -> str:
-    """Person C: OCR/parse the file at `path`, return plain text."""
-    return "ERROR: read_document not implemented yet"
+    """Extract structured information from a local PDF/image using C's vision pipeline."""
+    try:
+        import json
+        from src.pdf_processor import pdf_to_images
+        from src.extract import extract_document
+
+        ext = os.path.splitext(path)[1].lower()
+
+        if ext == ".pdf":
+            images = pdf_to_images(path, "uploads/pdf_pages")
+        elif ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"):
+            images = [path]
+        else:
+            return f"ERROR: unsupported document type: {ext}"
+
+        if not images:
+            return "ERROR: no pages found in document"
+
+        results = []
+
+        for image_path in images:
+            raw = extract_document(image_path)
+            data = json.loads(raw)
+            results.append(data)
+
+        return json.dumps(results)[:2000]
+
+    except Exception as e:
+        return f"ERROR: document processing failed: {e}"
 
 
 def search_documents(query: str) -> str:
