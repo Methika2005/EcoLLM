@@ -9,7 +9,7 @@ If this passes and the live demo breaks, the bug is in the model or a
 teammate's tool -- not in your loop. That saves you an hour at 2am.
 """
 
-import agent
+from agent import agent
 import tools
 
 PASS, FAIL = 0, 0
