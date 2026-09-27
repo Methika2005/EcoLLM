@@ -15,6 +15,7 @@ from typing import Optional
 import json
 
 from agent.agent import chat, parse
+from src.schema import InspectionResult, normalize_inspection_result
 from tools.tools import write_report
 
 
@@ -34,6 +35,7 @@ class WorkItem:
     alert_required: bool = False
 
     outputs: list[str] = field(default_factory=list)
+    inspection_result: InspectionResult = field(default_factory=InspectionResult)
 
 
 @dataclass
@@ -138,6 +140,8 @@ class WorkflowQueue:
                 "action": action,
                 "status": item.status,
                 "execution": execution,
+                "inspection_result": item.inspection_result.as_dict(),
+                "summary": item.inspection_result.to_display_text(),
             })
 
         return results
@@ -170,7 +174,15 @@ class WorkflowQueue:
     ) -> bool:
         """Analyze a report and store its triage result."""
 
-        result = triage_report(extracted_report)
+        item = next(
+            (item for item in self.items if item.id == item_id),
+            None,
+        )
+        if item is None:
+            return False
+
+        item.inspection_result = normalize_inspection_result(extracted_report)
+        result = triage_report(item.inspection_result.to_triage_text())
 
         return self.update_priority(
             item_id=item_id,
@@ -274,19 +286,19 @@ class WorkflowQueue:
             sections = [
                 {
                     "heading": "Priority",
-                    "content": item.priority,
+                    "body": item.priority,
                 },
                 {
                     "heading": "Reason",
-                    "content": item.reason,
+                    "body": item.reason,
                 },
                 {
                     "heading": "Required Action",
-                    "content": item.required_action,
+                    "body": item.required_action,
                 },
                 {
                     "heading": "Inspection Findings",
-                    "content": extracted_report,
+                    "body": item.inspection_result.to_display_text(),
                 },
             ]
 
@@ -341,6 +353,8 @@ Rules:
 - LOW means no urgent action is indicated.
 - Do not invent findings.
 - Base the decision only on the supplied report.
+- Classify workflow priority separately from inspection status and source-reported severity.
+- Never copy HIGH, MEDIUM, or LOW into inspection_status.
 - alert_required must normally be true only for HIGH priority.
 """
 

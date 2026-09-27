@@ -7,6 +7,7 @@ from urllib.parse import unquote
 import agent
 from router import route
 from orchestrator.workflow import WorkflowQueue, WorkItem
+from tools.tools import read_document
 
 
 PORT = 8080
@@ -2983,13 +2984,37 @@ def run_workflow(uploaded_files, user_task):
             "5. Recommended actions, if stated or clearly supported\n\n"
             "For each important finding, preserve the actual "
             "details from the document.\n\n"
+            "Return exactly one JSON object with these fields:\n"
+            "{"
+            "\"equipment_inspected\":\"\","
+            "\"inspection_status\":\"\","
+            "\"overall_condition\":\"\","
+            "\"key_findings\":[],"
+            "\"abnormalities\":[],"
+            "\"recommended_actions\":[],"
+            "\"source_notes\":\"\","
+            "\"document_type\":\"\","
+            "\"title\":\"\","
+            "\"summary\":\"\","
+            "\"overall_severity\":\"\""
+            "}\n"
+            "Use empty strings or empty arrays for information not stated.\n"
+            "Do not use workflow priority as inspection status.\n\n"
             f"Report name: {report_name}\n"
             f"Attached file: {item.file_path}"
         )
 
-        analysis = agent.run(analysis_task, True, kind_of(item.file_path))
-
-        extracted_reports[item.id] = answer_to_text(analysis.get("answer", ""))
+        file_kind = kind_of(item.file_path)
+        if file_kind in {"pdf", "image"}:
+            extraction = read_document(item.file_path)
+            if extraction.startswith("ERROR:"):
+                raise RuntimeError(extraction)
+            extracted_reports[item.id] = extraction
+        else:
+            analysis = agent.run(analysis_task, True, file_kind)
+            extracted_reports[item.id] = answer_to_text(
+                analysis.get("answer", "")
+            )
 
     # -----------------------------------------------------
     # AI TRIAGE
@@ -3042,7 +3067,8 @@ def run_workflow(uploaded_files, user_task):
                     "priority": priority,
                     "action": action,
                     "status": item.status,
-                    "summary": extracted_reports.get(item.id, ""),
+                    "summary": item.inspection_result.to_display_text(),
+                    "inspection_result": item.inspection_result.as_dict(),
                     "reason": item.reason,
                     "required_action": item.required_action,
                 }

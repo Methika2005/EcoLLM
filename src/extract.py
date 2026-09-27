@@ -2,6 +2,8 @@ import ollama
 import json
 import re
 
+VISION_CLIENT = ollama.Client(timeout=180)
+
 
 def extract_document(image_path):
 
@@ -42,7 +44,7 @@ Rules:
 - Return ONLY the JSON object.
 """
 
-    response = ollama.chat(
+    response = VISION_CLIENT.chat(
         model="qwen2.5vl:3b",
         messages=[
             {
@@ -50,7 +52,11 @@ Rules:
                 "content": prompt,
                 "images": [image_path]
             }
-        ]
+        ],
+        options={
+            "num_predict": 512,
+            "temperature": 0.2,
+        },
     )
 
     raw = response["message"]["content"].strip()
