@@ -1,394 +1,503 @@
 # EcoLLM — Sovereign On-Premise Agentic AI Workbench
 
-> **Private AI for confidential industrial work — running locally with open-weight multimodal models.**
+> **Smart Automation | PS ID: 26117**  
+> **Team: GreenForGood**
 
-EcoLLM is a self-hosted agentic AI workbench designed for confidential industrial environments where documents, engineering data, and operational information must remain on-premise.
+EcoLLM is a local-first, on-premise agentic AI workbench designed for confidential industrial workflows.
 
-It combines locally hosted open-weight LLMs, multimodal document understanding, tool execution, sandboxed code execution, and document generation into a single local workflow.
+It combines open-weight multimodal language models, intelligent task routing, document understanding, workflow orchestration, sandboxed code execution, and human-in-the-loop review into a single local system.
 
----
+The goal is simple:
 
-## Problem
-
-Industrial teams increasingly need AI assistance for:
-
-- Inspection reports
-- Engineering documents
-- Scanned and handwritten notes
-- Technical calculations
-- Code generation and execution
-- Internal document search
-- Approval notes and reports
-
-However, sending confidential industrial information to external cloud AI services can create privacy, security, and compliance concerns.
-
-EcoLLM addresses this with a local-first architecture:
-
-**User → Local UI → Agent → Local Model → Local Tools → Local Output**
-
-No cloud AI API is required for the core workflow.
+**Process sensitive industrial information locally, automate repetitive decisions and documentation, and keep humans in control of important actions.**
 
 ---
 
-## Key Features
+## 1. Problem Statement
 
-### 1. Local Open-Weight Models
+Industrial organizations often work with sensitive documents, inspection reports, maintenance records, and operational data.
 
-EcoLLM uses locally hosted models through Ollama:
+Sending such information to external AI services can introduce concerns around:
 
-| Task | Model |
-|---|---|
-| General reasoning | `qwen2.5:7b` |
-| Code generation | `qwen2.5-coder:7b` |
-| Vision / OCR | `qwen2.5vl:3b` |
+- Data confidentiality
+- Intellectual property
+- Regulatory requirements
+- Vendor dependency
+- Network availability
+- Control over AI-generated outputs
 
-The router automatically selects a suitable model based on the task.
+At the same time, manually processing every document is slow and difficult to scale.
+
+EcoLLM addresses this by providing a **local agentic AI workflow** where models, document processing, orchestration, and tool execution run on the organization's own machine or infrastructure.
 
 ---
 
-### 2. Multimodal Document Understanding
+## 2. What EcoLLM Does
 
-EcoLLM can process:
+EcoLLM can:
 
-- Scanned PDFs
-- Images
-- Handwritten inspection notes
-- Photographs of documents
-- Technical documents
+- Accept industrial documents such as PDFs
+- Understand scanned/image-based documents using a local vision-language model
+- Route tasks to different local models based on the task type
+- Extract structured inspection information
+- Normalize findings, abnormalities, actions, and inspection status
+- Assign workflow priority using defined business rules
+- Route cases for human review
+- Generate Word-based review/approval documents
+- Execute Python code inside a network-isolated Docker container
+- Maintain an agentic tool-calling loop
+- Process multiple documents through a workflow queue
+- Provide a local browser-based interface
 
-The vision model performs the initial extraction, after which the general reasoning model can continue the task.
+The system is designed around **AI-assisted automation rather than autonomous safety-critical decision making**.
 
-Example:
+---
+
+## 3. Architecture
 
 ```text
-Handwritten Inspection Note
-          ↓
-      Vision Model
-          ↓
-   Structured Extraction
-          ↓
-   Reasoning Model
-          ↓
-    Key Findings
-          ↓
-    Approval Note
+                    ┌─────────────────────────┐
+                    │       Local Web UI       │
+                    │    127.0.0.1:8080       │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │       EcoLLM Agent       │
+                    │   Agentic Tool Calling    │
+                    └────────────┬────────────┘
+                                 │
+               ┌─────────────────┼─────────────────┐
+               │                 │                 │
+               ▼                 ▼                 ▼
+        ┌────────────┐    ┌────────────┐    ┌────────────┐
+        │   Router   │    │   Tools    │    │  Workflow  │
+        │            │    │            │    │   Queue    │
+        └─────┬──────┘    └─────┬──────┘    └─────┬──────┘
+              │                 │                 │
+      ┌───────┼───────┐         │          ┌──────┼──────┐
+      │       │       │         │          │      │      │
+      ▼       ▼       ▼         ▼          ▼      ▼      ▼
+    Qwen    Qwen    Qwen    Document    HIGH   MEDIUM   LOW
+    2.5     2.5     2.5     Processing
+    7B      Coder   VL 3B
+            7B
 ````
 
----
-
-### 3. Agentic Tool Use
-
-The agent can decide when a tool is required instead of attempting to answer everything directly.
-
-Available tools include:
-
-* `read_document`
-* `run_python`
-* `write_report`
-* `search_documents`
-
-The agent follows a loop:
-
-```text
-Task
- ↓
-Router
- ↓
-Model
- ↓
-Tool Decision
- ↓
-Tool Execution
- ↓
-Tool Result
- ↓
-Model
- ↓
-Final Answer / Deliverable
-```
-
----
-
-### 4. Sandboxed Code Execution
-
-Python code generated by the agent runs inside a Docker container.
-
-The sandbox is configured with:
-
-* No network access
-* Memory limit
-* CPU limit
-* Execution timeout
-* Ephemeral container
-
-Example:
-
-```text
-Agent-generated Python
-        ↓
-Docker Container
-        ↓
-   --network none
-        ↓
-      Result
-```
-
-This prevents generated code from directly accessing the external network.
-
----
-
-### 5. Local Document-to-Report Workflow
-
-EcoLLM supports an end-to-end workflow:
-
-```text
-Scanned Inspection Report
-          ↓
-       OCR / Vision
-          ↓
-  Structured Information
-          ↓
-   Agent Reasoning
-          ↓
-    Key Findings
-          ↓
- Approval Note (.docx)
-```
-
-The generated Word document is saved locally in the `output/` directory.
-
----
-
-### 6. Local Web Interface
-
-EcoLLM provides a local browser interface with:
-
-* Chat
-* Analyze
-* Report
-* Code
-* Knowledge modes
-* File upload
-* Agent execution timeline
-* Model selection visibility
-* Tool execution visibility
-* Generated document download
-* System status
-* Technical trace
-
-The UI is served only on:
-
-```text
-127.0.0.1:8080
-```
-
----
-
-## Architecture
-
-```text
-                         ┌──────────────────────┐
-                         │      User / UI       │
-                         │   localhost:8080     │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │     Agent Layer      │
-                         │  Task + Tool Loop    │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │       Router         │
-                         │ Task-based selection │
-                         └───────┬───────┬──────┘
-                                 │       │
-                 ┌───────────────┘       └───────────────┐
-                 ▼                                       ▼
-        ┌─────────────────┐                    ┌─────────────────┐
-        │ Qwen2.5 7B      │                    │ Qwen2.5-VL 3B  │
-        │ General         │                    │ Vision / OCR    │
-        └─────────────────┘                    └─────────────────┘
-                 │                                       │
-                 │                         Document      │
-                 │                         Extraction    │
-                 │                               │       │
-                 └──────────────┬────────────────┘       │
-                                ▼                        │
-                       ┌─────────────────┐               │
-                       │ Local Tool Layer│◄──────────────┘
-                       └───────┬─────────┘
-                               │
-              ┌────────────────┼─────────────────┐
-              ▼                ▼                 ▼
-       ┌────────────┐  ┌──────────────┐  ┌──────────────┐
-       │ Docker     │  │ Document     │  │ Word Report  │
-       │ Sandbox    │  │ Pipeline     │  │ Generator    │
-       └────────────┘  └──────────────┘  └──────────────┘
-```
-
----
-
-## Model Routing
-
-EcoLLM uses task-based model routing.
-
-### General Tasks
-
-```text
-qwen2.5:7b
-```
-
-Used for:
-
-* General reasoning
-* Document reasoning
-* Summarization
-* Industrial questions
-
-### Coding Tasks
-
-```text
-qwen2.5-coder:7b
-```
-
-Used for:
-
-* Code generation
-* Programming questions
-* Algorithmic tasks
-
-### Vision Tasks
-
-```text
-qwen2.5vl:3b
-```
-
-Used for:
-
-* Scanned documents
-* Images
-* Handwritten notes
-* OCR / visual understanding
-
-After document extraction, the workflow can hand the task back to the general reasoning model.
-
----
-
-## Security and Sovereignty
-
-EcoLLM is designed around a local-first architecture.
-
-### Local Model Serving
-
-Models are served through Ollama on the local machine:
+All model inference is performed through the local Ollama instance:
 
 ```text
 http://localhost:11434
 ```
 
-### Local UI
-
-The application binds to:
+The browser interface runs locally at:
 
 ```text
-127.0.0.1:8080
+http://127.0.0.1:8080
 ```
-
-### Code Sandbox
-
-Generated Python code executes inside Docker with:
-
-```text
---network none
-```
-
-along with CPU and memory limits.
-
-### No Cloud AI API
-
-The core inference workflow does not require:
-
-* OpenAI API
-* Anthropic API
-* Google AI API
-* External inference endpoints
-
-Models are downloaded once and subsequently served locally.
-
-> **Demo note:** Full network-isolation claims are validated separately during the final offline demonstration by running the system with external connectivity disabled.
 
 ---
 
-## Example Demo
+## 4. Models
+
+EcoLLM uses multiple local open-weight models instead of sending every task to a single model.
+
+### Qwen2.5 7B
+
+Used for:
+
+* General reasoning
+* Document-related tasks
+* Workflow reasoning
+* Structured inspection interpretation
+* Report generation
+
+### Qwen2.5-Coder 7B
+
+Used for:
+
+* Programming tasks
+* Code generation
+* Code-oriented reasoning
+
+### Qwen2.5-VL 3B
+
+Used for:
+
+* Scanned documents
+* Image-based PDFs
+* Visual document understanding
+* Extraction of information from inspection documents
+
+---
+
+## 5. Intelligent Model Routing
+
+EcoLLM selects an initial model based on the task.
+
+```text
+Task
+ │
+ ├── Code-related
+ │       └── Qwen2.5-Coder 7B
+ │
+ ├── Scanned/image/PDF understanding
+ │       └── Qwen2.5-VL 3B
+ │
+ └── General/document reasoning
+         └── Qwen2.5 7B
+```
+
+For document workflows, the vision model can extract information from scanned pages before handing the structured information to the general reasoning model.
+
+This avoids unnecessarily using the vision model for tasks that do not require visual understanding.
+
+---
+
+## 6. Agentic Tool Loop
+
+The agent communicates with tools using structured JSON.
+
+The basic flow is:
+
+```text
+User Task
+   │
+   ▼
+Model Selection
+   │
+   ▼
+Agent Reasoning
+   │
+   ▼
+Tool Selection
+   │
+   ├── read_document
+   ├── run_python
+   └── write_report
+   │
+   ▼
+Tool Result
+   │
+   ▼
+Agent Continues Reasoning
+   │
+   ▼
+Final Response
+```
+
+The loop includes safeguards such as:
+
+* Maximum number of agent steps
+* Bounded context
+* Tool failure recovery
+* Structured output parsing
+* Model handoff after document extraction
+
+---
+
+## 7. Industrial Inspection Workflow
+
+One of the main EcoLLM workflows is inspection-report processing.
 
 ### Input
 
-A handwritten equipment inspection note.
+A user provides an inspection report, such as a scanned PDF.
 
-### Step 1 — Vision
-
-The router identifies the scanned input and selects:
+### Processing
 
 ```text
-Qwen2.5-VL 3B
+Inspection PDF
+      │
+      ▼
+PDF Analysis
+      │
+      ├── Native text available
+      │       └── Extract text directly
+      │
+      └── Scanned page
+              └── Qwen2.5-VL 3B
+                       │
+                       ▼
+              Structured Extraction
+                       │
+                       ▼
+                 Normalization
+                       │
+                       ▼
+                 Workflow Triage
 ```
 
-### Step 2 — Document Extraction
+### Extracted Information
 
-The vision pipeline extracts structured information such as:
+EcoLLM separates information into meaningful fields:
 
 * Equipment
-* Location
-* Inspection date
-* Inspector
-* Findings
-* Severity
-* Recommendations
+* Inspection status
+* Overall condition
+* Summary
+* Key findings
+* Abnormalities
+* Recommended actions
+* Workflow priority
+* Workflow assessment
+* Workflow action
 
-### Step 3 — Reasoning
-
-The extracted information is passed to:
-
-```text
-Qwen2.5 7B
-```
-
-for task completion.
-
-### Step 4 — Deliverable
-
-The agent generates an approval note:
-
-```text
-output/Approval_Note_for_Equipment_Inspection_o.docx
-```
-
-The document can then be downloaded directly from the local UI.
+This prevents workflow severity from being incorrectly presented as the physical inspection status.
 
 ---
 
-## Technology Stack
+## 8. Workflow Orchestration
 
-| Component             | Technology              |
-| --------------------- | ----------------------- |
-| Local LLM serving     | Ollama                  |
-| General LLM           | Qwen2.5 7B              |
-| Coding LLM            | Qwen2.5-Coder 7B        |
-| Vision LLM            | Qwen2.5-VL 3B           |
-| Agent                 | Python                  |
-| Web UI                | Python standard library |
-| OCR / Vision pipeline | Qwen2.5-VL              |
-| PDF processing        | PyMuPDF                 |
-| Word generation       | python-docx             |
-| Code sandbox          | Docker                  |
-| Frontend              | HTML / CSS / JavaScript |
-| Version control       | Git / GitHub            |
+EcoLLM includes a workflow queue so that documents can be processed as workflow items instead of treating every upload as an isolated chatbot request.
+
+Each work item can contain:
+
+* File path
+* Status
+* Priority
+* Reason
+* Required action
+* Alert requirement
+* Extracted inspection information
+* Generated outputs
+
+The workflow can process multiple reports and triage them according to defined rules.
 
 ---
 
-## Project Structure
+## 9. Priority and Human Review
+
+The workflow uses three priority levels:
+
+| Priority | Workflow Behaviour       |
+| -------- | ------------------------ |
+| HIGH     | Alert and human review   |
+| MEDIUM   | Review/approval workflow |
+| LOW      | Record and monitor       |
+
+The priority is a workflow-level classification and is kept separate from the inspection's physical condition/status.
+
+### HIGH
+
+High-priority cases generate a human-review alert.
+
+```text
+HIGH
+  ↓
+ALERT_AND_HUMAN_REVIEW
+  ↓
+ALERT_REQUIRED
+```
+
+### MEDIUM
+
+Medium-priority cases can enter a review/report workflow.
+
+```text
+MEDIUM
+  ↓
+GENERATE_REPORT_AND_REVIEW
+  ↓
+REVIEW_REQUIRED
+  ↓
+Word Review / Approval Note
+```
+
+### LOW
+
+Low-priority cases can be recorded for monitoring.
+
+```text
+LOW
+  ↓
+RECORD_AND_MONITOR
+  ↓
+MONITORING
+```
+
+The system is intended to support human decision-making rather than independently making safety-critical decisions.
+
+---
+
+## 10. Word Report Generation
+
+EcoLLM can generate a Word document from structured inspection information.
+
+For example:
+
+```text
+Inspection Report
+       │
+       ▼
+AI Extraction
+       │
+       ▼
+Workflow Triage
+       │
+       ▼
+Review Required
+       │
+       ▼
+Word Approval / Review Note
+```
+
+Generated reports can contain sections such as:
+
+* Priority
+* Reason
+* Required Action
+* Inspection Findings
+
+The generated document is stored locally under the project's `output/` directory.
+
+---
+
+## 11. Sandboxed Python Execution
+
+EcoLLM supports Python execution through Docker.
+
+The execution environment is configured with:
+
+```text
+--network none
+--memory 512m
+--cpus 1
+```
+
+This provides a restricted environment for agent-generated Python execution.
+
+The sandbox is intended as a practical local isolation mechanism for the demo; it should not be treated as a complete production security boundary without further hardening.
+
+---
+
+## 12. Document Processing
+
+EcoLLM supports PDF processing with different paths depending on the document.
+
+### Text-based PDF
+
+If native text is available:
+
+```text
+PDF
+ ↓
+Native text extraction
+ ↓
+Structured processing
+```
+
+Vision inference is skipped when it is unnecessary.
+
+### Scanned PDF
+
+For scanned pages:
+
+```text
+PDF
+ ↓
+Page rendering
+ ↓
+Image preprocessing
+ ↓
+Qwen2.5-VL 3B
+ ↓
+Structured information
+```
+
+For mixed PDFs, vision processing is performed only for scanned pages.
+
+The system also rejects excessively large scanned-PDF workloads rather than silently dropping pages.
+
+---
+
+## 13. Inspection Normalization
+
+Model output can vary in structure and wording.
+
+EcoLLM therefore normalizes inspection information before presenting it to the user.
+
+For example, it separates:
+
+```text
+Inspection Status
+        ≠
+Workflow Priority
+```
+
+and distinguishes:
+
+```text
+Normal Observation
+        ≠
+Abnormality
+```
+
+Explicit issues such as leakage or above-normal readings can be preserved as abnormalities, while negative observations are not incorrectly classified as problems.
+
+The user-facing result does not expose raw model JSON or internal workflow IDs.
+
+---
+
+## 14. Error Handling
+
+The workflow is designed so that a failure in one document does not automatically abort processing of other documents.
+
+For example:
+
+```text
+Document 1 → SUCCESS
+Document 2 → PROCESSING ERROR
+Document 3 → SUCCESS
+Document 4 → SUCCESS
+```
+
+The failed document can retain its error information while the remaining workflow items continue.
+
+The agent loop also handles:
+
+* Unknown tools
+* Invalid tool arguments
+* Malformed model responses
+* Excessive agent-loop steps
+* Bounded context requirements
+
+---
+
+## 15. Security and Sovereignty
+
+EcoLLM is designed around a local-first architecture.
+
+### Current Design
+
+* Local Ollama inference
+* No cloud model API required
+* Local browser interface
+* Local document processing
+* Local generated documents
+* Docker-based restricted Python execution
+* Network-disabled Python sandbox
+* No external CDN dependency for the local UI
+
+### Important Limitation
+
+Running a system locally does not automatically guarantee complete host-level isolation or enterprise-grade security.
+
+For production deployment, additional controls would be required, such as:
+
+* OS-level isolation
+* Access control
+* Authentication
+* Audit logging
+* Container hardening
+* File-system permissions
+* Network policy enforcement
+* Resource monitoring
+* Security testing
+
+---
+
+## 16. Project Structure
 
 ```text
 EcoLLM/
@@ -405,6 +514,10 @@ EcoLLM/
 │   ├── __init__.py
 │   └── tools.py
 │
+├── orchestrator/
+│   ├── __init__.py
+│   └── workflow.py
+│
 ├── src/
 │   ├── extract.py
 │   ├── generate_doc.py
@@ -417,7 +530,6 @@ EcoLLM/
 │
 ├── uploads/
 ├── output/
-│
 ├── app.py
 ├── CONTRACT.md
 ├── README.md
@@ -426,44 +538,83 @@ EcoLLM/
 
 ---
 
-## Requirements
+## 17. Main Components
 
-### Software
+### `app.py`
 
-* Windows / Linux / macOS
-* Python 3.11+
-* Ollama
-* Docker Desktop
+Local browser-based interface and workflow entry point.
 
-### Recommended Hardware
+### `agent/agent.py`
 
-The current prototype was developed and tested on a workstation with approximately:
+Implements:
 
-* 16 GB RAM
-* Intel Core i5-class CPU
-* Integrated graphics
+* Local Ollama communication
+* Model routing
+* Agentic tool loop
+* JSON parsing
+* Tool invocation
+* Context management
 
-The models run locally through CPU/system-memory resources.
+### `router/router.py`
+
+Selects an appropriate local model based on the task.
+
+### `tools/tools.py`
+
+Provides tools for:
+
+* Document reading
+* Python execution
+* Word report generation
+
+### `orchestrator/workflow.py`
+
+Implements:
+
+* Workflow queue
+* Priority handling
+* Triage
+* Alerts
+* Human-review routing
+* Report-generation actions
+
+### `src/extract.py`
+
+Handles document/image extraction and multimodal model interaction.
+
+### `src/pdf_processor.py`
+
+Handles PDF inspection and page preprocessing.
+
+### `src/schema.py`
+
+Normalizes extracted inspection information into a consistent structure.
+
+### `src/generate_doc.py`
+
+Generates Word documents.
 
 ---
 
-## Installation
+## 18. Setup
 
-### 1. Install Python dependencies
+### Requirements
+
+Recommended environment:
+
+* Windows/Linux/macOS
+* Python 3.10+
+* Ollama
+* Docker Desktop
+* Approximately 16 GB RAM for the demonstrated local model setup
+
+Install the required Python packages:
 
 ```bash
-pip install requests python-docx pymupdf ollama pydantic
+pip install -r requirements.txt
 ```
 
-### 2. Install Ollama
-
-Install Ollama for your operating system and verify:
-
-```bash
-ollama --version
-```
-
-### 3. Pull the required models
+Pull the required Ollama models:
 
 ```bash
 ollama pull qwen2.5:7b
@@ -471,33 +622,13 @@ ollama pull qwen2.5-coder:7b
 ollama pull qwen2.5vl:3b
 ```
 
-Verify:
-
-```bash
-ollama list
-```
+Make sure Ollama is running.
 
 ---
 
-### 4. Install Docker
+## 19. Running EcoLLM
 
-Verify:
-
-```bash
-docker --version
-```
-
-and:
-
-```bash
-docker info
-```
-
----
-
-## Running EcoLLM
-
-From the project directory:
+From the project root:
 
 ```bash
 python app.py
@@ -511,99 +642,247 @@ http://127.0.0.1:8080
 
 ---
 
-## Running the Agent Directly
+## 20. Example Tasks
 
-Example:
-
-```bash
-python -c "from agent.agent import run; print(run('Calculate the area of a 300 mm diameter pipe cross-section.'))"
-```
-
----
-
-## Testing the Code Sandbox
-
-```bash
-python -c "from tools.tools import run_python; print(run_python('print(125 * 48)'))"
-```
-
-Expected:
+### General document summary
 
 ```text
-6000
+Give me a summary of the inspection report.
 ```
 
-The sandbox container is started with networking disabled.
+### Word report
+
+```text
+Generate a Word document report for this inspection report.
+```
+
+### Multiple reports
+
+```text
+Generate a Word document report for all these inspection reports.
+```
+
+### Code task
+
+```text
+Write Python code to calculate the average inspection reading.
+```
+
+The router can direct code-related tasks to the coder model while document and visual tasks are handled by the appropriate models.
 
 ---
 
-## Design Principles
+## 21. Testing
 
-EcoLLM follows five main principles:
+Compile the main Python modules:
 
-### 1. Sovereignty
+```bash
+python -m py_compile app.py src\schema.py src\extract.py src\pdf_processor.py tools\tools.py orchestrator\workflow.py
+```
 
-Sensitive data remains within the local environment.
+Run inspection normalization tests:
 
-### 2. Modularity
+```bash
+python -m unittest tests.test_inspection_normalization -v
+```
 
-Different models can be assigned to different classes of tasks.
+Run agent-loop tests:
 
-### 3. Agentic Execution
+```bash
+python -m tests.test_loop
+```
 
-The model can reason about when to invoke tools.
+Check Git whitespace:
 
-### 4. Defense in Depth
-
-Network isolation, sandboxing, and local inference provide multiple layers of protection.
-
-### 5. Human-in-the-Loop
-
-AI generates analysis and deliverables while humans remain responsible for reviewing and approving industrial decisions.
-
----
-
-## Current Capabilities
-
-| Capability                  | Status              |
-| --------------------------- | ------------------- |
-| Local Ollama inference      | ✅                   |
-| General reasoning           | ✅                   |
-| Code model routing          | ✅                   |
-| Vision model routing        | ✅                   |
-| Image OCR / extraction      | ✅                   |
-| Scanned document processing | ✅                   |
-| Agent tool loop             | ✅                   |
-| Docker code sandbox         | ✅                   |
-| Network-disabled sandbox    | ✅                   |
-| Word report generation      | ✅                   |
-| Local web UI                | ✅                   |
-| Local file upload           | ✅                   |
-| Model visibility            | ✅                   |
-| Execution trace             | ✅                   |
-| Full offline demonstration  | 🔄 Final validation |
+```bash
+git diff --check
+```
 
 ---
 
-## Future Extensions
+## 22. Current Validation
 
-* Local vector database / document index
-* Semantic enterprise document search
-* Spreadsheet analysis and generation
-* PowerPoint generation
-* More industrial file formats
+The current implementation has been validated for:
+
+* Python syntax
+* Inspection normalization
+* PDF extraction behaviour
+* Mixed native/scanned PDFs
+* Workflow normalization
+* User-facing result formatting
+* Malformed model output handling
+* Tool failure recovery
+* Agent-loop limits
+* Context bounds
+* Docker network isolation behaviour
+* Multi-document error isolation
+
+The exact runtime of multimodal PDF processing can vary significantly depending on the local machine and model state.
+
+---
+
+## 23. Current Capabilities
+
+### Implemented
+
+* Local Ollama inference
+* Multi-model routing
+* Qwen2.5 7B
+* Qwen2.5-Coder 7B
+* Qwen2.5-VL 3B
+* Agentic tool calling
+* PDF processing
+* Scanned-document understanding
+* Inspection normalization
+* Workflow queue
+* HIGH/MEDIUM/LOW workflow prioritization
+* Human-review routing
+* Alert generation
+* Word document generation
+* Docker sandboxed Python execution
+* Local browser UI
+* Multi-document error isolation
+
+### Not currently implemented
+
+The following should not be considered completed capabilities:
+
+* Full retrieval-augmented generation (RAG)
+* Production-grade authentication
+* Enterprise access control
+* Full host-level air-gap enforcement
+* Production-grade security isolation
+* Hardware-level energy telemetry
+* Automatic model escalation based on validation confidence
+
+---
+
+## 24. Future Extensions
+
+Potential future improvements include:
+
+* Local document search and retrieval
+* Vector-based knowledge base
+* Retrieval-augmented generation
+* Long-term local memory
+* More industrial document formats
+* Authentication and role-based access control
+* Detailed audit trails
+* Stronger sandbox isolation
+* Resource and energy monitoring
 * Additional open-weight models
-* Role-based access control
-* Audit logging
-* Fully isolated enterprise deployment
+* Confidence-based validation and escalation
+* Enterprise deployment controls
 
 ---
 
-## Team
+## 25. Design Principles
 
-Built as a hackathon prototype for:
+EcoLLM follows a few core principles:
 
-**Sovereign On-Premise Agentic AI Workbench using Open-Weight Multimodal LLMs for Confidential Industrial Work**
+### Sovereignty
+
+Sensitive industrial information should remain under the organization's control.
+
+### Local-first AI
+
+Use local open-weight models wherever practical.
+
+### Right model for the task
+
+Different tasks should use appropriate models instead of unnecessarily sending everything to the largest model.
+
+### Human-in-the-loop
+
+AI should assist with prioritization and documentation while humans retain control over important decisions.
+
+### Structured automation
+
+Convert unstructured documents into structured workflow information that can drive downstream actions.
+
+### Graceful failure
+
+One failed document or tool call should not unnecessarily break the entire workflow.
+
+### Practical security
+
+Use local execution and sandboxing while recognizing that production deployments require additional security controls.
 
 ---
 
+## 26. Hackathon Context
+
+**Hackathon:** Smart Automation
+**Problem Statement ID:** 26117
+**Project:** EcoLLM
+**Team:** GreenForGood
+
+EcoLLM demonstrates how open-weight multimodal models can be combined with agentic workflows to create a practical local AI assistant for confidential industrial environments.
+
+The project focuses on the complete workflow:
+
+```text
+Industrial Document
+        ↓
+Local AI Understanding
+        ↓
+Structured Information
+        ↓
+Workflow Triage
+        ↓
+Priority / Alert
+        ↓
+Human Review
+        ↓
+Documented Action
+```
+
+---
+
+## 27. Demo Flow
+
+A typical demonstration can follow this sequence:
+
+```text
+1. Upload an industrial inspection PDF
+              ↓
+2. EcoLLM identifies the document workflow
+              ↓
+3. Qwen2.5-VL processes scanned pages
+              ↓
+4. Inspection information is normalized
+              ↓
+5. Workflow queue triages the report
+              ↓
+6. Priority and required action are determined
+              ↓
+7. HIGH cases generate human-review alerts
+              ↓
+8. MEDIUM cases can generate a Word review note
+              ↓
+9. LOW cases are recorded for monitoring
+```
+
+This demonstrates the transition from:
+
+```text
+AI model → agent → workflow → action
+```
+
+rather than using an LLM only as a conversational chatbot.
+
+---
+
+## Credits & Acknowledgements
+
+EcoLLM was developed with the support of AI-assisted development tools for brainstorming, debugging, documentation, and development assistance.
+
+### AI & Models
+
+- **Ollama** — Used for local inference and serving the open-weight models.
+- **Qwen2.5 7B** — Used for general reasoning and document/workflow tasks.
+- **Qwen2.5-Coder 7B** — Used for code-related tasks.
+- **Qwen2.5-VL 3B** — Used for scanned-document and visual understanding.
+- **AI-assisted development tools** — Used as development support for ideation, debugging, code assistance, and documentation.
+
+The architecture, implementation, integration, testing, and final project decisions were carried out and validated by the **GreenForGood** team.
