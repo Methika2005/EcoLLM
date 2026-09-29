@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from pydantic import Field
 from typing import Any, List
+import re
 
 
 class Finding(BaseModel):
@@ -45,42 +46,106 @@ class InspectionResult(BaseModel):
             return self.model_dump_json()
         return self.json()
 
+    def to_user_dict(self) -> dict:
+        has_structured_content = any((
+            self.equipment_inspected,
+            self.inspection_status,
+            self.overall_condition,
+            self.key_findings,
+            self.abnormalities,
+            self.recommended_actions,
+        ))
+        summary = self.summary or (
+            "" if has_structured_content else self.source_notes
+        )
+        unwrapped_summary = re.sub(
+            r"^\s*```(?:json)?\s*|\s*```\s*$",
+            "",
+            summary.strip(),
+            flags=re.IGNORECASE,
+        )
+        if unwrapped_summary.lstrip().startswith(("{", "[")):
+            summary = ""
+
+        sentences = []
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", summary.strip()):
+            sentence = sentence.strip()
+            if sentence and sentence.casefold() not in {
+                existing.casefold() for existing in sentences
+            }:
+                sentences.append(sentence)
+            if len(sentences) == 4:
+                break
+
+        findings = []
+        seen_findings = set()
+        finding_actions = []
+        for finding in self.key_findings:
+            identity = (
+                finding.item.casefold(),
+                finding.finding.casefold(),
+            )
+            if identity not in seen_findings:
+                seen_findings.add(identity)
+                findings.append(
+                    finding.model_dump() if hasattr(finding, "model_dump")
+                    else finding.dict()
+                )
+            if finding.recommendation:
+                finding_actions.append(finding.recommendation)
+
+        def unique_texts(values: List[str]) -> List[str]:
+            unique = []
+            seen = set()
+            for value in values:
+                text = value.strip()
+                identity = text.casefold()
+                if text and identity not in seen:
+                    seen.add(identity)
+                    unique.append(text)
+            return unique
+
+        return {
+            "equipment_inspected": self.equipment_inspected,
+            "inspection_status": self.inspection_status,
+            "overall_condition": self.overall_condition,
+            "summary": " ".join(sentences),
+            "key_findings": findings,
+            "abnormalities": unique_texts(self.abnormalities),
+            "recommended_actions": unique_texts(
+                self.recommended_actions + finding_actions
+            ),
+        }
+
     def to_display_text(self) -> str:
+        result = self.to_user_dict()
         lines = []
         for label, value in (
-            ("Equipment inspected", self.equipment_inspected),
-            ("Inspection status", self.inspection_status),
-            ("Overall condition", self.overall_condition),
-            ("Summary", self.summary),
+            ("Equipment inspected", result["equipment_inspected"]),
+            ("Inspection status", result["inspection_status"]),
+            ("Overall condition", result["overall_condition"]),
+            ("Summary", result["summary"]),
         ):
             if value:
                 lines.append(f"{label}: {value}")
 
-        if self.overall_severity:
-            lines.append(f"Source-reported inspection severity: {self.overall_severity}")
+        if result["key_findings"]:
+            lines.append("Key findings:")
+            for finding in result["key_findings"]:
+                detail = finding["finding"]
+                if finding["item"]:
+                    detail = f"{finding['item']}: {detail}" if detail else finding["item"]
+                if finding["severity"]:
+                    detail += f" (source severity: {finding['severity']})"
+                lines.append(f"- {detail}")
 
-        for label, values in (
-            ("Key findings", self.key_findings),
-            ("Abnormalities", self.abnormalities),
-            ("Recommended actions", self.recommended_actions),
+        for label, key in (
+            ("Abnormalities", "abnormalities"),
+            ("Recommended actions", "recommended_actions"),
         ):
-            if values:
+            if result[key]:
                 lines.append(f"{label}:")
-                for value in values:
-                    if isinstance(value, Finding):
-                        detail = value.finding
-                        if value.item:
-                            detail = f"{value.item}: {detail}" if detail else value.item
-                        if value.severity:
-                            detail += f" (reported severity: {value.severity})"
-                        if value.recommendation:
-                            detail += f" Recommendation: {value.recommendation}"
-                        lines.append(f"- {detail}")
-                    else:
-                        lines.append(f"- {value}")
-
-        if self.source_notes:
-            lines.append(f"Source notes: {self.source_notes}")
+                lines.extend(f"- {value}" for value in result[key])
 
         return "\n".join(lines) or "No inspection details were provided."
 
@@ -100,7 +165,20 @@ def _string_list(value: Any) -> List[str]:
     if value is None:
         return []
     values = value if isinstance(value, list) else [value]
-    return [text for entry in values if (text := _text(entry))]
+    texts = []
+    for entry in values:
+        if isinstance(entry, dict):
+            entry = next(
+                (
+                    entry.get(key)
+                    for key in ("action", "recommended_action", "recommendation", "item", "finding", "description")
+                    if entry.get(key) not in (None, "")
+                ),
+                "",
+            )
+        if text := _text(entry):
+            texts.append(text)
+    return texts
 
 
 def _finding_list(value: Any) -> List[Finding]:
@@ -111,10 +189,16 @@ def _finding_list(value: Any) -> List[Finding]:
     findings = []
     for entry in values:
         if isinstance(entry, dict):
+            item = _text(entry.get("item"))
+            finding = _text(entry.get("finding") or entry.get("description"))
+            severity = _text(entry.get("severity"))
+            if not severity and finding.upper() in {"HIGH", "MEDIUM", "LOW"}:
+                severity = finding.upper()
+                finding = item
             findings.append(Finding(
-                item=_text(entry.get("item")),
-                finding=_text(entry.get("finding") or entry.get("description")),
-                severity=_text(entry.get("severity")),
+                item=item,
+                finding=finding,
+                severity=severity,
                 recommendation=_text(entry.get("recommendation")),
             ))
         else:
@@ -226,18 +310,52 @@ def normalize_inspection_result(raw: Any) -> InspectionResult:
         extra_notes = json.dumps(extra_fields, ensure_ascii=False)
         source_notes = "\n".join(part for part in (source_notes, extra_notes) if part)
 
+    recommended_actions = _string_list(
+        payload.get("recommended_actions", payload.get("recommendations"))
+    )
+    action_keys = {action.casefold() for action in recommended_actions}
+    key_findings = _finding_list(
+        payload.get("key_findings", payload.get("findings"))
+    )
+    key_findings = [
+        finding for finding in key_findings
+        if finding.item.casefold() not in action_keys
+    ]
+    abnormalities = [
+        value for value in _string_list(payload.get("abnormalities"))
+        if not value.casefold().startswith(("no ", "no-", "not "))
+    ]
+    abnormality_markers = (
+        "leak", "above normal", "higher than normal", "crack", "corrosion",
+        "damage", "fault", "defect", "failure", "overheating", "excessive",
+    )
+    for finding in key_findings:
+        detail = finding.finding or finding.item
+        folded = detail.casefold()
+        if (
+            detail
+            and not folded.startswith(("no ", "no-", "not "))
+            and any(marker in folded for marker in abnormality_markers)
+        ):
+            abnormalities.append(detail)
+
+    inspection_status = _text(payload.get("inspection_status"))
+    overall_severity = _text(payload.get("overall_severity"))
+    if inspection_status.upper() in {"HIGH", "MEDIUM", "LOW"}:
+        if not overall_severity:
+            overall_severity = inspection_status.upper()
+        inspection_status = ""
+
     return InspectionResult(
         equipment_inspected=_text(payload.get("equipment_inspected")),
-        inspection_status=_text(payload.get("inspection_status")),
+        inspection_status=inspection_status,
         overall_condition=_text(payload.get("overall_condition")),
-        key_findings=_finding_list(payload.get("key_findings", payload.get("findings"))),
-        abnormalities=_string_list(payload.get("abnormalities")),
-        recommended_actions=_string_list(
-            payload.get("recommended_actions", payload.get("recommendations"))
-        ),
+        key_findings=key_findings,
+        abnormalities=list(dict.fromkeys(abnormalities)),
+        recommended_actions=recommended_actions,
         source_notes=source_notes,
         document_type=_text(payload.get("document_type")),
         title=_text(payload.get("title")),
         summary=_text(payload.get("summary")),
-        overall_severity=_text(payload.get("overall_severity")),
+        overall_severity=overall_severity,
     )

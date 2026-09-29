@@ -2101,7 +2101,6 @@ function renderWorkflow(data) {
 
                             🚨 ${esc(
                                 alert.report_name ||
-                                alert.item_id ||
                                 "Inspection report"
                             )}
 
@@ -2180,9 +2179,32 @@ function renderWorkflow(data) {
             "Inspection report";
 
 
+        const inspectionStatus =
+            result.inspection_status || "";
+
+        const equipmentInspected =
+            result.equipment_inspected || "";
+
+        const overallCondition =
+            result.overall_condition || "";
+
         const summary =
-            result.summary ||
-            "No summary was returned for this report.";
+            result.summary || "";
+
+        const keyFindings =
+            Array.isArray(result.key_findings)
+                ? result.key_findings
+                : [];
+
+        const abnormalities =
+            Array.isArray(result.abnormalities)
+                ? result.abnormalities
+                : [];
+
+        const recommendedActions =
+            Array.isArray(result.recommended_actions)
+                ? result.recommended_actions
+                : [];
 
 
         const priority =
@@ -2269,32 +2291,66 @@ function renderWorkflow(data) {
 
                     <div class="severity">
 
-                        ${esc(priority)}
+                        Priority: ${esc(priority)}
 
                     </div>
 
                 </div>
 
 
-                <!-- ACTUAL INSPECTION SUMMARY -->
+                ${
+                    equipmentInspected
+                        ? `<div class="finding-text" style="margin-top:12px"><strong>Equipment Inspected:</strong> ${esc(equipmentInspected)}</div>`
+                        : ""
+                }
 
-                <div
-                    class="finding-text"
-                    style="margin-top:12px"
-                >
+                ${
+                    inspectionStatus
+                        ? `<div class="finding-text" style="margin-top:8px"><strong>Inspection Status:</strong> ${esc(inspectionStatus)}</div>`
+                        : ""
+                }
 
-                    <strong>
-                        Inspection Summary
-                    </strong>
+                ${
+                    overallCondition
+                        ? `<div class="finding-text" style="margin-top:8px"><strong>Overall Condition:</strong> ${esc(overallCondition)}</div>`
+                        : ""
+                }
 
+                ${
+                    summary
+                        ? `<div class="finding-text" style="margin-top:12px"><strong>Inspection Summary</strong><div style="margin-top:8px">${esc(summary)}</div></div>`
+                        : ""
+                }
 
-                    <div style="margin-top:8px">
+                ${
+                    keyFindings.length
+                        ? `<div class="finding-text" style="margin-top:12px"><strong>Key Findings:</strong><ul>${keyFindings.map(finding => {
+                            const text = typeof finding === "string"
+                                ? finding
+                                : [
+                                    [finding.item, finding.finding]
+                                        .filter(Boolean)
+                                        .join(": "),
+                                    finding.severity
+                                        ? `Source severity: ${finding.severity}`
+                                        : "",
+                                ].filter(Boolean).join(" · ");
+                            return text ? `<li>${esc(text)}</li>` : "";
+                        }).join("")}</ul></div>`
+                        : ""
+                }
 
-                        ${esc(summary)}
+                ${
+                    abnormalities.length
+                        ? `<div class="finding-text" style="margin-top:12px"><strong>Abnormalities:</strong><ul>${abnormalities.map(value => `<li>${esc(value)}</li>`).join("")}</ul></div>`
+                        : ""
+                }
 
-                    </div>
-
-                </div>
+                ${
+                    recommendedActions.length
+                        ? `<div class="finding-text" style="margin-top:12px"><strong>Recommended Actions:</strong><ul>${recommendedActions.map(value => `<li>${esc(value)}</li>`).join("")}</ul></div>`
+                        : ""
+                }
 
 
                 <!-- AI ASSESSMENT -->
@@ -2308,7 +2364,7 @@ function renderWorkflow(data) {
                             >
 
                                 <strong>
-                                    Assessment
+                                    Workflow Assessment
                                 </strong>
 
 
@@ -2374,7 +2430,7 @@ function renderWorkflow(data) {
                                         ? `
                                             ·
                                             <strong>
-                                                Status:
+                                                Workflow Status:
                                             </strong>
 
                                             ${esc(status)}
@@ -2888,6 +2944,7 @@ def run_workflow(uploaded_files, user_task):
     queue = WorkflowQueue()
 
     extracted_reports = {}
+    document_errors = {}
 
     uploaded_items = []
 
@@ -2947,7 +3004,7 @@ def run_workflow(uploaded_files, user_task):
 
         queue.add(WorkItem(id=item_id, file_path=path))
 
-        report_name = os.path.splitext(safe_name)[0]
+        report_name = safe_name
 
         uploaded_items.append(
             {
@@ -3005,23 +3062,34 @@ def run_workflow(uploaded_files, user_task):
         )
 
         file_kind = kind_of(item.file_path)
-        if file_kind in {"pdf", "image"}:
-            extraction = read_document(item.file_path)
-            if extraction.startswith("ERROR:"):
-                raise RuntimeError(extraction)
-            extracted_reports[item.id] = extraction
-        else:
-            analysis = agent.run(analysis_task, True, file_kind)
-            extracted_reports[item.id] = answer_to_text(
-                analysis.get("answer", "")
-            )
+        try:
+            if file_kind in {"pdf", "image"}:
+                extraction = read_document(item.file_path)
+                if extraction.startswith("ERROR:"):
+                    raise RuntimeError(extraction)
+                extracted_reports[item.id] = extraction
+            else:
+                analysis = agent.run(analysis_task, True, file_kind)
+                extracted_reports[item.id] = answer_to_text(
+                    analysis.get("answer", "")
+                )
+        except Exception as exc:
+            document_errors[item.id] = str(exc)
+            item.status = "ERROR"
+            item.reason = f"Document processing failed: {exc}"
 
     # -----------------------------------------------------
     # AI TRIAGE
     # -----------------------------------------------------
 
     for item in queue.get_all():
-        queue.triage_item(item.id, extracted_reports.get(item.id, ""))
+        if item.id not in document_errors:
+            try:
+                queue.triage_item(item.id, extracted_reports.get(item.id, ""))
+            except Exception as exc:
+                document_errors[item.id] = f"Inspection triage failed: {exc}"
+                item.status = "ERROR"
+                item.reason = document_errors[item.id]
 
     # -----------------------------------------------------
     # EXECUTION
@@ -3031,6 +3099,17 @@ def run_workflow(uploaded_files, user_task):
         # Only generate Word documents when the
         # user explicitly asks for a report/document.
         results = queue.process_prioritized(extracted_reports)
+        results.extend(
+            {
+                "id": item.id,
+                "priority": "NOT ASSESSED",
+                "action": "PROCESSING_ERROR",
+                "status": "ERROR",
+                "reason": document_errors[item.id],
+            }
+            for item in queue.get_all()
+            if item.id in document_errors
+        )
 
     else:
         # Summary / analysis request:
@@ -3042,7 +3121,7 @@ def run_workflow(uploaded_files, user_task):
         for item in queue.get_all():
             report_name = os.path.splitext(os.path.basename(item.file_path))[0]
 
-            priority = item.priority
+            priority = item.priority or "NOT ASSESSED"
 
             action = (
                 "ALERT_AND_HUMAN_REVIEW"
@@ -3067,12 +3146,22 @@ def run_workflow(uploaded_files, user_task):
                     "priority": priority,
                     "action": action,
                     "status": item.status,
-                    "summary": item.inspection_result.to_display_text(),
-                    "inspection_result": item.inspection_result.as_dict(),
                     "reason": item.reason,
                     "required_action": item.required_action,
                 }
             )
+
+    for result in results:
+        item_id = result.get("id")
+        item = next(
+            (queued for queued in queue.get_all() if queued.id == item_id),
+            None,
+        )
+        if item is None:
+            continue
+        result.pop("id", None)
+        result["report_name"] = os.path.basename(item.file_path)
+        result.update(item.inspection_result.to_user_dict())
 
     # -----------------------------------------------------
     # ALERTS
@@ -3085,8 +3174,7 @@ def run_workflow(uploaded_files, user_task):
     for alert in queue.get_alerts():
         alerts.append(
             {
-                "item_id": alert.item_id,
-                "report_name": name_by_id.get(alert.item_id, alert.item_id),
+                "report_name": name_by_id.get(alert.item_id, "Inspection report"),
                 "priority": alert.priority,
                 "message": alert.message,
                 "required_action": alert.required_action,
@@ -3122,7 +3210,13 @@ def run_workflow(uploaded_files, user_task):
             "summary": summary_text,
             "results": results,
         },
-        "items": uploaded_items,
+        "items": [
+            {
+                "filename": item["filename"],
+                "report_name": item["report_name"],
+            }
+            for item in uploaded_items
+        ],
         "results": results,
         "alerts": alerts,
         "model": "Workflow Orchestrator",

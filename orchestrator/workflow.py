@@ -13,6 +13,7 @@ Handles multiple industrial reports by:
 from dataclasses import dataclass, field
 from typing import Optional
 import json
+import os
 
 from agent.agent import chat, parse
 from src.schema import InspectionResult, normalize_inspection_result
@@ -233,7 +234,7 @@ class WorkflowQueue:
                     priority=item.priority,
                     message=(
                         f"High-priority issue detected in report "
-                        f"{item.id}: {item.reason}"
+                        f"{os.path.basename(item.file_path)}: {item.reason}"
                     ),
                     required_action=item.required_action,
                 )
@@ -280,7 +281,7 @@ class WorkflowQueue:
 
             title = (
                 "Approval Note - "
-                + item.id
+                + os.path.splitext(os.path.basename(item.file_path))[0]
             )
 
             sections = [

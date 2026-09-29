@@ -40,13 +40,53 @@ def read_document(path: str) -> str:
     """Extract structured information from a local PDF/image using C's vision pipeline."""
     try:
         import json
+        import pymupdf
         from src.pdf_processor import pdf_to_images
         from src.extract import extract_document
 
         ext = os.path.splitext(path)[1].lower()
 
         if ext == ".pdf":
-            images = pdf_to_images(path, "uploads/pdf_pages")
+            native_pages = []
+            scanned_pages = []
+            with pymupdf.open(path) as pdf:
+                for page_number, page in enumerate(pdf):
+                    text = page.get_text().strip()
+                    if text:
+                        native_pages.append({
+                            "page": page_number,
+                            "result": {
+                                "document_type": "PDF text",
+                                "summary": text,
+                                "source_notes": text,
+                            },
+                        })
+                    else:
+                        scanned_pages.append(page_number)
+
+            if len(scanned_pages) > 8:
+                return (
+                    "ERROR: PDF contains more than 8 scanned pages; "
+                    "split the report into smaller files."
+                )
+
+            images = pdf_to_images(
+                path,
+                "uploads/pdf_pages",
+                page_numbers=scanned_pages,
+            )
+            page_results = [
+                (entry["page"], entry["result"])
+                for entry in native_pages
+            ]
+            page_results.extend(
+                (page_number, json.loads(extract_document(image_path)))
+                for page_number, image_path in zip(scanned_pages, images)
+            )
+            if not page_results:
+                return "ERROR: no pages found in document"
+            page_results.sort(key=lambda entry: entry[0])
+            return json.dumps([result for _, result in page_results])[:2000]
         elif ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"):
             images = [path]
         else:
@@ -55,12 +95,7 @@ def read_document(path: str) -> str:
         if not images:
             return "ERROR: no pages found in document"
 
-        results = []
-
-        for image_path in images:
-            raw = extract_document(image_path)
-            data = json.loads(raw)
-            results.append(data)
+        results = [json.loads(extract_document(image_path)) for image_path in images]
 
         return json.dumps(results)[:2000]
 
